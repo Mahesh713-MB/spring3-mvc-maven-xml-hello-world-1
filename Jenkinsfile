@@ -1,95 +1,107 @@
+
 pipeline {
-    agent any 
+    agent any
+
     tools {
-        // Note: this should match with the tool name configured in your jenkins instance (JENKINS_URL/configureTools/)
+        // This should match the Maven tool name configured in Jenkins
         maven "MVN_HOME"
-        
     }
-	 environment {
-        // This can be nexus3 or nexus2
+
+    environment {
+        // Nexus version
         NEXUS_VERSION = "nexus3"
-        // This can be http or https
+
+        // Protocol used to access Nexus
         NEXUS_PROTOCOL = "http"
-        // Where your Nexus is running
+
+        // Nexus server URL
         NEXUS_URL = "54.86.237.152:8081"
-        // Repository where we will upload the artifact
+
+        // Repository where the artifact will be uploaded
         NEXUS_REPOSITORY = "devops"
-        // Jenkins credential id to authenticate to Nexus OSS
+
+        // Jenkins credential ID for Nexus authentication
         NEXUS_CREDENTIAL_ID = "Nexus_server"
     }
+
     stages {
         stage("clone code") {
             steps {
                 script {
-                    // Let's clone the source
-                    git 'https://github.com/Mahesh713-MB/spring3-mvc-maven-xml-hello-world-1.git';
+                    // Clone the source code
+                    git 'https://github.com/Mahesh713-MB/spring3-mvc-maven-xml-hello-world-1.git'
                 }
             }
         }
+
         stage("mvn build") {
             steps {
                 script {
-                    // If you are using Windows then you should use "bat" step
-                    // Since unit testing is out of the scope we skip them
+                    // Build the application
                     sh 'mvn -Dmaven.test.failure.ignore=true install'
                 }
             }
         }
-		stage('Verify Artifact') {
-    steps {
-        sh '''
-            test -f target/ncodeit-hello-world-3.0.war
-            ls -lh target/ncodeit-hello-world-3.0.war
-        '''
-        archiveArtifacts artifacts: 'target/ncodeit-hello-world-3.0.war',
-                         fingerprint: true
-    }
-}
-stage('publish to nexus') {
-    steps {
-        script {
-            def groupId = 'com.ncodeit'
-            def artifactId = 'ncodeit-hello-world'
-            def artifactPath = 'target/ncodeit-hello-world-3.0.war'
-            def pomPath = 'pom.xml'
-            def artifactVersion = "${BUILD_NUMBER}"
 
-            if (!fileExists(artifactPath)) {
-                error "WAR file not found: ${artifactPath}"
+        stage('Verify Artifact') {
+            steps {
+                sh '''
+                    test -f target/ncodeit-hello-world-3.0.war
+                    ls -lh target/ncodeit-hello-world-3.0.war
+                '''
+
+                archiveArtifacts artifacts: 'target/ncodeit-hello-world-3.0.war',
+                                 fingerprint: true
             }
+        }
 
-            if (!fileExists(pomPath)) {
-                error "POM file not found: ${pomPath}"
+        stage('publish to nexus') {
+            steps {
+                script {
+                    def groupId = 'com.ncodeit'
+                    def artifactId = 'ncodeit-hello-world'
+                    def artifactPath = 'target/ncodeit-hello-world-3.0.war'
+                    def pomPath = 'pom.xml'
+                    def artifactVersion = "${BUILD_NUMBER}"
+
+                    if (!fileExists(artifactPath)) {
+                        error "WAR file not found: ${artifactPath}"
+                    }
+
+                    if (!fileExists(pomPath)) {
+                        error "POM file not found: ${pomPath}"
+                    }
+
+                    echo "Publishing ${artifactPath} to Nexus"
+
+                    nexusArtifactUploader(
+                        nexusVersion: NEXUS_VERSION,
+                        protocol: NEXUS_PROTOCOL,
+                        nexusUrl: NEXUS_URL,
+                        groupId: groupId,
+                        artifactId: artifactId,
+                        version: artifactVersion,
+                        repository: NEXUS_REPOSITORY,
+                        credentialsId: NEXUS_CREDENTIAL_ID,
+                        artifacts: [
+                            [
+                                artifactId: artifactId,
+                                classifier: '',
+                                file: artifactPath,
+                                type: 'war'
+                            ]
+                            [
+                                artifactId: artifactId,
+                                classifier: '',
+                                file: pomPath,
+                                type: 'pom'
+                            ]
+                        ]
+                    )
+
+                    echo 'Nexus upload step completed.'
+                }
             }
-
-            echo "Publishing ${artifactPath} to Nexus"
-
-            nexusArtifactUploader(
-                nexusVersion: NEXUS_VERSION,
-                protocol: NEXUS_PROTOCOL,
-                nexusUrl: NEXUS_URL,
-                groupId: groupId,
-                artifactId: artifactId,
-                version: artifactVersion,
-                repository: NEXUS_REPOSITORY,
-                credentialsId: NEXUS_CREDENTIAL_ID,
-                artifacts: [
-                    [
-                        artifactId: artifactId,
-                        classifier: '',
-                        file: artifactPath,
-                        type: 'war'
-                    ],
-                    [
-                        artifactId: artifactId,
-                        classifier: '',
-                        file: pomPath,
-                        type: 'pom'
-                    ]
-                ]
-            )
-
-            echo 'Nexus upload step completed.'
         }
     }
 }
