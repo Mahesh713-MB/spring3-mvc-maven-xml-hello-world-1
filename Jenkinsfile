@@ -45,7 +45,6 @@ pipeline {
                          fingerprint: true
     }
 }
-    ```groovy
 stage('publish to nexus') {
     steps {
         script {
