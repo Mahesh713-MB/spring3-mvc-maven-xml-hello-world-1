@@ -1,105 +1,79 @@
-
 pipeline {
-    agent any
-
+    agent any 
     tools {
-        // This should match the Maven tool name configured in Jenkins
+        // Note: this should match with the tool name configured in your jenkins instance (JENKINS_URL/configureTools/)
         maven "MVN_HOME"
+        
     }
-
-    environment {
-        // Nexus version
+	 environment {
+        // This can be nexus3 or nexus2
         NEXUS_VERSION = "nexus3"
-
-        // Protocol used to access Nexus
+        // This can be http or https
         NEXUS_PROTOCOL = "http"
-
-        // Nexus server URL
+        // Where your Nexus is running
         NEXUS_URL = "54.86.237.152:8081"
-
-        // Repository where the artifact will be uploaded
+        // Repository where we will upload the artifact
         NEXUS_REPOSITORY = "devops"
-
-        // Jenkins credential ID for Nexus authentication
+        // Jenkins credential id to authenticate to Nexus OSS
         NEXUS_CREDENTIAL_ID = "Nexus_server"
     }
-
     stages {
         stage("clone code") {
             steps {
                 script {
-                    // Clone the source code
-                    git 'https://github.com/Mahesh713-MB/spring3-mvc-maven-xml-hello-world-1.git'
+                    // Let's clone the source
+                    git 'https://github.com/Mahesh713-MB/spring3-mvc-maven-xml-hello-world-1.git';
                 }
             }
         }
-
         stage("mvn build") {
             steps {
                 script {
-                    // Build the application
+                    // If you are using Windows then you should use "bat" step
+                    // Since unit testing is out of the scope we skip them
                     sh 'mvn -Dmaven.test.failure.ignore=true install'
                 }
             }
         }
-
-        stage('Verify Artifact') {
-            steps {
-                sh '''
-                    test -f target/ncodeit-hello-world-3.0.war
-                    ls -lh target/ncodeit-hello-world-3.0.war
-                '''
-
-                archiveArtifacts artifacts: 'target/ncodeit-hello-world-3.0.war',
-                                 fingerprint: true
-            }
-        }
-
-        stage('publish to nexus') {
+        stage("publish to nexus") {
             steps {
                 script {
-                    def groupId = 'com.ncodeit'
-                    def artifactId = 'ncodeit-hello-world'
-                    def artifactPath = 'target/ncodeit-hello-world-3.0.war'
-                    def pomPath = 'pom.xml'
-                    def artifactVersion = "${BUILD_NUMBER}"
-
-                    if (!fileExists(artifactPath)) {
-                        error "WAR file not found: ${artifactPath}"
-                    }
-
-                    if (!fileExists(pomPath)) {
-                        error "POM file not found: ${pomPath}"
-                    }
-
-                    echo "Publishing ${artifactPath} to Nexus"
-
-                    nexusArtifactUploader(
-                        nexusVersion: NEXUS_VERSION,
-                        protocol: NEXUS_PROTOCOL,
-                        nexusUrl: NEXUS_URL,
-                        groupId: groupId,
-                        artifactId: artifactId,
-                        version: artifactVersion,
-                        repository: NEXUS_REPOSITORY,
-                        credentialsId: NEXUS_CREDENTIAL_ID,
-                        artifacts: [
-                            [
-                                artifactId: artifactId,
+                    // Read POM xml file using 'readMavenPom' step , this step 'readMavenPom' is included in: https://plugins.jenkins.io/pipeline-utility-steps
+                    pom = readMavenPom file: "pom.xml";
+                    // Find built artifact under target folder
+                    filesByGlob = findFiles(glob: "target/*.${pom.packaging}");
+                    // Print some info from the artifact found
+                    echo "${filesByGlob[0].name} ${filesByGlob[0].path} ${filesByGlob[0].directory} ${filesByGlob[0].length} ${filesByGlob[0].lastModified}"
+                    // Extract the path from the File found
+                    artifactPath = filesByGlob[0].path;
+                    // Assign to a boolean response verifying If the artifact name exists
+                    artifactExists = fileExists artifactPath;
+                    if(artifactExists) {
+                        echo "*** File: ${artifactPath}, group: ${pom.groupId}, packaging: ${pom.packaging}, version $BUILD_NUMBER}";
+                        nexusArtifactUploader(
+                            nexusVersion: NEXUS_VERSION,
+                            protocol: NEXUS_PROTOCOL,
+                            nexusUrl: NEXUS_URL,
+			    groupId: pom.groupId,
+                            version: '${BUILD_NUMBER}',
+                            repository: NEXUS_REPOSITORY,
+                            credentialsId: NEXUS_CREDENTIAL_ID,
+                            artifacts: [
+                                // Artifact generated such as .jar, .ear and .war files.
+                                [artifactId: pom.artifactId,
                                 classifier: '',
                                 file: artifactPath,
-                                type: 'war'
-                            ]
-                            [
-                                artifactId: artifactId,
+                                type: pom.packaging],
+                                // Lets upload the pom.xml file for additional information for Transitive dependencies
+                                [artifactId: pom.artifactId,
                                 classifier: '',
-                                file: pomPath,
-                                type: 'pom'
+                                file: "pom.xml",
+                                type: "pom"]
                             ]
-                        ]
-                    )
-
-                    echo 'Nexus upload step completed.'
+                        );
+                    } else {
+                        error "*** File: ${artifactPath}, could not be found";
+                    }
                 }
             }
         }
