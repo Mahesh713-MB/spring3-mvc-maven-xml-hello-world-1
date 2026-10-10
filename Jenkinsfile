@@ -30,6 +30,7 @@ pipeline {
             steps {
                 script {
                     def pom = readMavenPom file: 'pom.xml'
+
                     def artifacts = findFiles(
                         glob: "target/*.${pom.packaging}"
                     )
@@ -73,3 +74,4 @@ pipeline {
             }
         }
     }
+}
